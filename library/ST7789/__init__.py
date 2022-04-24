@@ -43,15 +43,9 @@ ST7789_SLPOUT = 0x11
 ST7789_PTLON = 0x12
 ST7789_NORON = 0x13
 
-# ILI9341_RDMODE = 0x0A
-# ILI9341_RDMADCTL = 0x0B
-# ILI9341_RDPIXFMT = 0x0C
-# ILI9341_RDIMGFMT = 0x0A
-# ILI9341_RDSELFDIAG = 0x0F
-
 ST7789_INVOFF = 0x20
 ST7789_INVON = 0x21
-# ILI9341_GAMMASET = 0x26
+
 ST7789_DISPOFF = 0x28
 ST7789_DISPON = 0x29
 
@@ -59,6 +53,7 @@ ST7789_CASET = 0x2A
 ST7789_RASET = 0x2B
 ST7789_RAMWR = 0x2C
 ST7789_RAMRD = 0x2E
+
 
 ST7789_PTLAR = 0x30
 ST7789_MADCTL = 0x36
@@ -68,7 +63,7 @@ ST7789_FRMCTR1 = 0xB1
 ST7789_FRMCTR2 = 0xB2
 ST7789_FRMCTR3 = 0xB3
 ST7789_INVCTR = 0xB4
-# ILI9341_DFUNCTR = 0xB6
+
 ST7789_DISSET5 = 0xB6
 
 ST7789_GCTRL = 0xB7
@@ -94,12 +89,41 @@ ST7789_GMCTRN1 = 0xE1
 
 ST7789_PWCTR6 = 0xFC
 
+ILI9341_MADCTL = 0x36
+ILI9341_COLMOD = 0x3A
+ILI9341_SWRESET = 0x01
+ILI9341_INITSEQ1 = 0xCF
+ILI9341_INITSEQ2 = 0xED
+ILI9341_INITSEQ3 = 0xE8
+ILI9341_INITSEQ4 = 0xCB
+ILI9341_INITSEQ5 = 0xF7
+ILI9341_INITSEQ6 = 0xEA
+
+ILI9341_LCMCTRL = 0xC0
+ILI9341_IDSET = 0xC1
+ILI9341_VDVVRHEN = 0xC2
+ILI9341_VRHS = 0xC3
+ILI9341_VCMCTR1 = 0xC5
+ILI9341_VCMCTR2 = 0xC7
+ILI9341_FRMCTR1 = 0xB1
+ILI9341_FRMCTR2 = 0xB2
+ILI9341_FRMCTR3 = 0xB3
+ILI9341_GAMMASET = 0x26
+ILI9341_GFUNDSL = 0xF2
+ILI9341_DFUNCTR = 0xB6
+ILI9341_GMCTRP1 = 0xE0
+ILI9341_GMCTRN1 = 0xE1
+ILI9341_NORON = 0x13
+ILI9341_INVOFF = 0x20
+ILI9341_INVCTR = 0xB4
+
 
 class ST7789(object):
     """Representation of an ST7789 TFT LCD."""
 
     def __init__(self, port, cs, dc, backlight=None, rst=None, width=240,
-                 height=240, rotation=90, invert=True, spi_speed_hz=4000000):
+                 height=240, rotation=0, invert=True, spi_speed_hz=4000000,
+                 spi_mode=0):
         """Create an instance of the display using SPI communication.
 
         Must provide the GPIO pin number for the D/C pin and the SPI driver.
@@ -122,7 +146,7 @@ class ST7789(object):
         GPIO.setmode(GPIO.BCM)
 
         self._spi = spidev.SpiDev(port, cs)
-        self._spi.mode = 0
+        self._spi.mode = spi_mode
         self._spi.lsbfirst = False
         self._spi.max_speed_hz = spi_speed_hz
 
@@ -150,8 +174,8 @@ class ST7789(object):
         # Setup reset as output (if provided).
         if rst is not None:
             GPIO.setup(rst, GPIO.OUT)
-
-        self.reset()
+            self.reset()
+        
         self._init()
 
     def send(self, data, is_data=True, chunk_size=4096):
@@ -338,7 +362,7 @@ class ST7789(object):
         # Unfortunate that this copy has to occur, but the SPI byte writing
         # function needs to take an array of bytes and PIL doesn't natively
         # store images in 18-bit 666 RGB format.
-        pixelbytes = list(self.image_to_data(image, self._rotation))
+        pixelbytes = self.image_to_data(image, self._rotation)
         # Write data to hardware.
         for i in range(0, len(pixelbytes), 4096):
             self.data(pixelbytes[i:i + 4096])
@@ -349,7 +373,198 @@ class ST7789(object):
         # Keith (https://www.blogger.com/profile/02555547344016007163)
         pb = np.rot90(np.array(image.convert('RGB')), rotation // 90).astype('uint8')
 
-        result = np.zeros((self._width, self._height, 2), dtype=np.uint8)
+        result = np.zeros((self._height, self._width, 2), dtype=np.uint8)
         result[..., [0]] = np.add(np.bitwise_and(pb[..., [0]], 0xF8), np.right_shift(pb[..., [1]], 5))
         result[..., [1]] = np.add(np.bitwise_and(np.left_shift(pb[..., [1]], 3), 0xE0), np.right_shift(pb[..., [2]], 3))
         return result.flatten().tolist()
+
+class ILI9341(ST7789):
+    """Representation of an ILI9341 TFT LCD."""
+
+    def __init__(self, port, cs, dc, backlight=None, rst=None, width=320,
+                 height=240, rotation=0, spi_speed_hz=40000000,
+                 spi_mode=0):
+        """Create an instance of the display using SPI communication.
+
+        Must provide the GPIO pin number for the D/C pin and the SPI driver.
+
+        Can optionally provide the GPIO pin number for the reset pin as the rst parameter.
+
+        :param port: SPI port number
+        :param cs: SPI chip-select number (0 or 1 for BCM
+        :param backlight: Pin for controlling backlight
+        :param rst: Reset pin for ILI9341
+        :param width: Width of display connected to ILI9341
+        :param height: Height of display connected to ILI9341
+        :param rotation: Rotation of display connected to ILI9341
+        :param invert: Invert display
+        :param spi_speed_hz: SPI speed (in Hz)
+
+        """
+
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+
+        self._spi = spidev.SpiDev(port, cs)
+        self._spi.mode = spi_mode
+        self._spi.lsbfirst = False
+        self._spi.max_speed_hz = spi_speed_hz
+
+        self._dc = dc
+        self._rst = rst
+        self._width = width
+        self._height = height
+        self._rotation = rotation
+
+        self._offset_left = 0
+        self._offset_top = 0
+
+        # Set DC as output.
+        GPIO.setup(dc, GPIO.OUT)
+
+        # Setup backlight as output (if provided).
+        self._backlight = backlight
+        if backlight is not None:
+            GPIO.setup(backlight, GPIO.OUT)
+            GPIO.output(backlight, GPIO.LOW)
+            time.sleep(0.1)
+            GPIO.output(backlight, GPIO.HIGH)
+
+        # Setup reset as output (if provided).
+        if rst is not None:
+            GPIO.setup(rst, GPIO.OUT)
+            self.reset()
+        
+        self._init()
+
+
+
+    def _init(self):
+        # Initialize the display.
+
+        self.command(ILI9341_SWRESET)    # Software reset
+        time.sleep(0.120)               # delay 120 ms
+
+        self.command(ILI9341_FRMCTR1)    # frameration control,normal mode full colours
+        self.data(0x00)
+        self.data(0x1B)
+
+        self.command(ILI9341_FRMCTR2)    # frameration control,normal mode full colours
+        self.data(0x00)
+        self.data(0x1B)
+
+        self.command(ILI9341_FRMCTR3)    # frameration control,normal mode full colours
+        self.data(0x00)
+        self.data(0x1B)
+
+        self.command(ILI9341_INVCTR)     # INVCTR Display inversion (no inversion)
+        self.data(0x00)
+
+        self.command(ILI9341_LCMCTRL)    # PWCTR1 Power control -4.6V, Auto mode
+        self.data(0x21)
+
+        self.command(ILI9341_IDSET)    # PWCTR2 Power control VGH25 2.4C, VGSEL -10, VGH = 3 * AVDD
+        self.data(0x11)
+
+        self.command(ILI9341_VDVVRHEN)    # PWCTR3 Power control, opamp current smal, boost frequency
+        self.data(0x0A)
+        self.data(0x00)
+
+        self.command(ILI9341_VRHS)    # PWCTR4 Power control, BLK/2, opamp current small and medium low
+        self.data(0x8A)
+        self.data(0x2A)
+
+        self.command(ILI9341_INVOFF)   # Invert display
+
+        self.command(ILI9341_MADCTL)
+        self.data(0x28)
+
+        self.command(ILI9341_COLMOD)
+        self.data(0x55)
+
+
+        self.command(ILI9341_INITSEQ1)
+        self.data(0x00)
+        self.data(0x81)
+        self.data(0x30)
+
+        self.command(ILI9341_INITSEQ2)
+        self.data(0x64)
+        self.data(0x03)
+        self.data(0x12)
+        self.data(0x81)
+
+        self.command(ILI9341_INITSEQ3)    # power on sequence control
+        self.data(0x85)
+        self.data(0x10)
+        self.data(0x7A)
+
+        self.command(ILI9341_INITSEQ5)    # pump ratio control
+        self.data(0x20)
+
+        self.command(ILI9341_INITSEQ6)    # driver timing control B
+        self.data(0x00)
+        self.data(0x00)  
+
+
+        self.command(ILI9341_VCMCTR1)    # VCM control
+        self.data(0x3F)
+        self.data(0x3C)
+
+        self.command(ILI9341_VCMCTR2)    # VCM control2
+        self.data(0xA7)
+
+        #self.command(ILI9341_DFUNCTR)    # display function control
+        #self.data(0x0A)
+        #self.data(0xA2)
+
+        self.command(ILI9341_GFUNDSL)    # 3Gamma Function Disable
+        self.data(0x00)
+
+        self.command(ILI9341_GAMMASET)    # Gamma curve selected
+        self.data(0x01)
+
+        self.command(ILI9341_GMCTRP1)    # Set Gamma
+        self.data(0x0F)
+        self.data(0x23)
+        self.data(0x1F)
+        self.data(0x0B)
+        self.data(0x0E)
+        self.data(0x08)
+        self.data(0x4B)
+        self.data(0xA8)
+        self.data(0x3B)
+        self.data(0x0A)
+        self.data(0x14)
+        self.data(0x06)
+        self.data(0x10)
+        self.data(0x09)
+        self.data(0x00)
+
+        self.command(ILI9341_GMCTRN1)    # Set Gamma
+        self.data(0x00)
+        self.data(0x1C)
+        self.data(0x20)
+        self.data(0x04)
+        self.data(0x10)
+        self.data(0x08)
+        self.data(0x34)
+        self.data(0x47)
+        self.data(0x44)
+        self.data(0x05)
+        self.data(0x0B)
+        self.data(0x09)
+        self.data(0x2F)
+        self.data(0x36)
+        self.data(0x0F)
+
+        self.command(ST7789_SLPOUT)
+        time.sleep(0.120)               # 120 ms
+
+        self.command(ST7789_DISPON)     # Display on
+        time.sleep(0.120)               # 120 ms
+
+
+        self.command(ILI9341_NORON)   # Normal display mode
+
+

@@ -22,28 +22,71 @@ import sys
 
 from PIL import Image
 import ST7789 as ST7789
+from ST7789 import ILI9341 as ILI9341
 
 print("""
 image.py - Display an image on the LCD.
 
-If you're using Breakout Garden, plug the 1.3" LCD (SPI)
+If you're using Breakout Garden, plug the 1.3 or 2.8" LCD (IPS)
 breakout into the rear slot.
 """)
 
 if len(sys.argv) < 2:
-    print("Usage: {} <image_file>".format(sys.argv[0]))
+    print("""Usage: {} <image_file> <display_type>
+
+Where <display_type> is one of:
+  * daczero    - 240x240 1.3" Display for NosPi DAC Zero
+  * dacmax     - 320x240 2.8" Display for NosPi DAC MAX
+  * dacmax_spi - 320x240 2.8" IPS Display for NosPi DAC MAX
+""".format(sys.argv[0]))
     sys.exit(1)
 
 image_file = sys.argv[1]
 
+try:
+    display_type = sys.argv[2]
+except IndexError:
+    display_type = "daczero"
+    
 # Create ST7789 LCD display class.
-disp = ST7789.ST7789(
-    port=0,
-    cs=ST7789.BG_SPI_CS_FRONT,  # BG_SPI_CSB_BACK or BG_SPI_CS_FRONT
-    dc=9,
-    backlight=19,               # 18 for back BG slot, 19 for front BG slot.
-    spi_speed_hz=80 * 1000 * 1000
-)
+if display_type in ("daczero"):
+    disp = ST7789.ST7789(
+        height=240,
+        width=240,
+        rotation=0,
+        port=0,
+        cs=0,
+        rst=5,
+        dc=25,
+        backlight=12,
+        spi_speed_hz=50 * 1000 * 1000,
+        spi_mode=3
+   )
+
+elif display_type == "dacmax_ips":
+    disp = ST7789.ST7789(
+        width=320,
+        port=0,
+        cs=0,
+        rst=14,
+        dc=25,
+        backlight=16,
+        spi_speed_hz=33 * 1000 * 1000
+   )
+
+elif display_type == "dacmax":
+    disp = ILI9341(
+        port=0,
+        cs=0,
+        rst=14,
+        dc=25,
+        backlight=16
+   )
+
+else:
+    print ("Invalid display type!")
+    sys.exit(1)
+ 
 
 WIDTH = disp.width
 HEIGHT = disp.height
